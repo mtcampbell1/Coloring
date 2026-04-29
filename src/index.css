@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: #fdfbf7;
+  color: #1f2937;
+}
+
+/* Soft scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(31, 41, 55, 0.18);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(31, 41, 55, 0.32);
+}
+
+/* Coloring page paper texture (used for previews) */
+.paper {
+  background-color: #fff;
+  background-image:
+    radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    radial-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+  background-size: 12px 12px, 24px 24px;
+  background-position: 0 0, 6px 6px;
+}
+
+/* Animated gradient backdrop for hero & cover */
+.aurora {
+  background: linear-gradient(120deg, #ffe7d6 0%, #d8ebff 50%, #eadfff 100%);
+}
+
+/* Subtle hatch for "generating" state */
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(31, 41, 55, 0.06) 0px,
+    rgba(31, 41, 55, 0.06) 4px,
+    transparent 4px,
+    transparent 10px
+  );
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* Page flip subtle entrance */
+@keyframes flip-in {
+  from {
+    transform: rotateY(8deg) translateX(8px);
+    opacity: 0;
+  }
+  to {
+    transform: rotateY(0) translateX(0);
+    opacity: 1;
+  }
+}
+.animate-flip-in {
+  animation: flip-in 240ms ease-out;
+}
+
+/* Dotted/dashed safe-area overlay */
+.safe-area {
+  outline: 2px dashed rgba(63, 143, 229, 0.5);
+  outline-offset: -16px;
+}
+.bleed-area {
+  outline: 2px dashed rgba(245, 132, 80, 0.55);
+  outline-offset: -2px;
+}
+
+/* Print warning chip pulse */
+@keyframes warn {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 132, 80, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 132, 80, 0);
+  }
+}
+.warn-pulse {
+  animation: warn 1.6s ease-in-out infinite;
+}
