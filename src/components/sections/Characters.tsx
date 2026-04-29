@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { makeId, mockCharacterSheet, useStore } from "../../lib/store";
+import { generateCharacterSheet, makeId, mockCharacterSheet, useStore } from "../../lib/store";
 import type { Character } from "../../lib/types";
 import { Icon } from "../ui/icon";
 import {
@@ -54,12 +54,25 @@ export function Characters() {
   const regenSheet = async () => {
     if (!active) return;
     setGeneratingSheet(active.id);
-    await new Promise((r) => setTimeout(r, 1100));
-    dispatch({
-      type: "update_character",
-      id: active.id,
-      patch: { sheet: mockCharacterSheet(active.name) },
-    });
+    const description = [
+      active.role,
+      active.outfit,
+      active.hairstyle,
+      active.bodyShape,
+      active.expressionNotes,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    try {
+      const sheet = await generateCharacterSheet(active.name, description);
+      dispatch({ type: "update_character", id: active.id, patch: { sheet } });
+    } catch {
+      dispatch({
+        type: "update_character",
+        id: active.id,
+        patch: { sheet: mockCharacterSheet(active.name) },
+      });
+    }
     setGeneratingSheet(null);
   };
 
