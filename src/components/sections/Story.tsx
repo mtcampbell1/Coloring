@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useStore } from "../../lib/store";
+import { generateStoryText, useStore } from "../../lib/store";
 import { Icon, type IconName } from "../ui/icon";
 import {
   Badge,
@@ -32,39 +32,57 @@ export function Story() {
 
   const runNudge = async (n: string) => {
     setBusy(n);
-    await new Promise((r) => setTimeout(r, 900));
-    if (n === "simpler") {
-      setStory({
-        summary:
-          "Sierra has a checkup. Alex helps Sierra feel safe. The vet listens, looks, and gives stickers. Everyone goes home happy.",
-        tone: "Warm, very gentle",
-      });
-    } else if (n === "funnier") {
-      setStory({
-        summary:
-          "It is checkup day! Sierra wags her tail too fast and almost knocks over a parrot. Alex laughs. The vet shows them all the silly tools. Sierra earns the biggest sticker of the day.",
-        tone: "Playful, light, lots of small laughs",
-      });
-    } else if (n === "educational") {
-      setStory({
-        summary:
-          "Alex learns what a vet does. They explore tools like a stethoscope and otoscope, count Sierra's heartbeats, identify body parts, and learn how to keep pets healthy.",
-        tone: "Curious and informative",
-        lesson: "Vets help keep our pets healthy.",
-      });
-    } else if (n === "remove-text") {
+
+    // Local-only nudges (no LLM call)
+    if (n === "remove-text") {
       setStory({ hasText: false });
-      // Also reflect in pages by clearing captions
       const next = pages.map((p) => ({ ...p, caption: undefined }));
       dispatch({ type: "set_pages", pages: next });
       dispatch({ type: "set_book", book: { captionsEnabled: false } });
-    } else if (n === "activity-book") {
+      setBusy(null);
+      return;
+    }
+    if (n === "activity-book") {
       setStory({ isActivityBook: true });
-    } else {
-      setStory({
-        summary:
-          "Alex packs Sierra's toy and walks bravely to the vet with Mom. The vet shows them how a checkup works. Sierra wags her tail and earns a sticker.",
-      });
+      setBusy(null);
+      return;
+    }
+
+    const characterList = characters.map((c) => `${c.name} (${c.role})`).join(", ");
+    const flavorByNudge: Record<string, string> = {
+      rewrite: "Rewrite the story summary from scratch with a fresh angle.",
+      simpler: "Make it simpler, shorter sentences, suitable for ages 3-5.",
+      funnier: "Make it funnier with light kid-safe humor.",
+      educational: "Make it more educational; emphasize what the reader learns.",
+      generate: "Write a new short story summary.",
+    };
+    const flavor = flavorByNudge[n] ?? flavorByNudge.generate;
+
+    const prompt = `You are writing the summary for a children's coloring book story.
+Title: "${state.book.title}".
+Audience: ages ${state.book.ageRange}.
+Setting: ${story.setting}.
+Tone target: ${story.tone}.
+Lesson: ${story.lesson}.
+Main characters: ${characterList}.
+
+${flavor}
+
+Respond with ONLY a 4-6 sentence story summary suitable for a coloring book. Plain prose, no preamble, no headings, no bullets.`;
+
+    try {
+      const text = (await generateStoryText(prompt)).trim();
+      if (text) {
+        const patch: Partial<typeof story> = { summary: text };
+        if (n === "simpler") patch.tone = "Warm, very gentle";
+        if (n === "funnier") patch.tone = "Playful, light";
+        if (n === "educational") {
+          patch.tone = "Curious and informative";
+        }
+        setStory(patch);
+      }
+    } catch {
+      // leave story unchanged on failure
     }
     setBusy(null);
   };

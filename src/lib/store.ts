@@ -155,48 +155,187 @@ export function makeId(prefix = "id") {
   return `${prefix}_${Date.now().toString(36)}_${_id}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-// ─── Mocked image provider ──────────────────────────────────────────────────
-// Real implementation: fetch from `/api/image/generate` or call provider SDK.
-// Here we just return a deterministic SVG data URL after a small delay.
+// ─── Image provider ─────────────────────────────────────────────────────────
+// Default provider: Pollinations.ai (https://pollinations.ai) — free, no API
+// key required, FLUX model under the hood. Returns real PNG URLs.
+//
+// Swap providers by changing `pollinationsUrl()` to another endpoint and
+// returning either a data URL or a hosted URL. Drop-in OpenAI gpt-image-2,
+// Stability, etc. all work the same way.
+// ────────────────────────────────────────────────────────────────────────────
 
-export async function mockGenerateLineArt(
+const POLLINATIONS_BASE = "https://image.pollinations.ai/prompt/";
+const POLLINATIONS_TEXT = "https://text.pollinations.ai/";
+
+function pollinationsUrl(
+  prompt: string,
+  opts: { width: number; height: number; seed?: number; model?: string },
+) {
+  const params = new URLSearchParams({
+    width: String(opts.width),
+    height: String(opts.height),
+    nologo: "true",
+    enhance: "true",
+    model: opts.model ?? "flux",
+  });
+  if (opts.seed != null) params.set("seed", String(opts.seed));
+  return `${POLLINATIONS_BASE}${encodeURIComponent(prompt)}?${params.toString()}`;
+}
+
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+const COLORING_RULES =
+  "black and white line art coloring book page, bold clean uniform outlines, pure white background, no shading, no grayscale, no gradients, no fill, only outlines, large open coloring spaces, simple shapes, kid friendly, printable, centered composition";
+
+const NEGATIVES = "no color, no shading, no gradients, no photorealism, no text";
+
+async function fetchAsBlob(url: string): Promise<Blob> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 60_000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    return await res.blob();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+export async function generateLineArt(
   page: PagePlan,
   characters: Character[],
   bookTitle: string,
   withCaption: boolean,
 ): Promise<string> {
-  await wait(900 + Math.random() * 800);
-  const svg = lineArtSVG({
-    seed: `${bookTitle}-${page.pageNumber}-${page.versions.length}`,
-    title: `${bookTitle} | Page ${page.pageNumber}: ${page.title}`,
-    characters: page.characters
-      .map((cid) => characters.find((c) => c.id === cid)?.name || "")
-      .filter(Boolean) as string[],
-    setting: page.setting,
-    complexity: page.complexity,
-    caption: withCaption ? page.caption : undefined,
-  });
-  return svgToDataUrl(svg);
+  const charDescriptions = page.characters
+    .map((cid) => {
+      const c = characters.find((x) => x.id === cid);
+      if (!c) return "";
+      return `${c.name} (${c.role}, ${c.outfit}, ${c.hairstyle})`;
+    })
+    .filter(Boolean)
+    .join(", ");
+
+  const captionPart =
+    withCaption && page.caption
+      ? `, with simple caption text "${page.caption}" at bottom`
+      : "";
+
+  const prompt = `${COLORING_RULES}. Scene: ${page.scene}. Featuring: ${charDescriptions}. Setting: ${page.setting}. Tone: ${page.emotionalTone}${captionPart}. ${NEGATIVES}.`;
+  const seed = hashStr(`${bookTitle}-${page.pageNumber}-${page.versions.length}`);
+  const url = pollinationsUrl(prompt, { width: 768, height: 1024, seed });
+
+  try {
+    await fetchAsBlob(url);
+    return url;
+  } catch {
+    return svgToDataUrl(
+      lineArtSVG({
+        seed: `${bookTitle}-${page.pageNumber}`,
+        title: `${bookTitle} | Page ${page.pageNumber}: ${page.title}`,
+        characters: page.characters
+          .map((cid) => characters.find((c) => c.id === cid)?.name || "")
+          .filter(Boolean) as string[],
+        setting: page.setting,
+        complexity: page.complexity,
+        caption: withCaption ? page.caption : undefined,
+      }),
+    );
+  }
 }
 
-export async function mockGenerateCover(
+export async function generateCover(
   bookTitle: string,
   subtitle: string | undefined,
   authorName: string | undefined,
   characterNames: string[],
+  style: string,
 ): Promise<string> {
-  await wait(1300);
-  return svgToDataUrl(
-    coverSVG({
-      title: bookTitle,
-      subtitle,
-      authorName,
-      characters: characterNames,
-    }),
-  );
+  const prompt = [
+    `professional children's book cover illustration, full color, vibrant, friendly, ${style.replaceAll("-", " ")} style`,
+    `for the book titled "${bookTitle}"${subtitle ? ` with subtitle "${subtitle}"` : ""}`,
+    `featuring ${characterNames.slice(0, 3).join(" and ")}`,
+    "title space at top, clear focal point, commercial book cover quality, no text overlay (we will add the title later), front cover only, no back cover",
+  ].join(", ");
+
+  const seed = hashStr(`${bookTitle}-cover-${Math.floor(Date.now() / 60000)}`);
+  const url = pollinationsUrl(prompt, { width: 768, height: 1024, seed });
+
+  try {
+    await fetchAsBlob(url);
+    return url;
+  } catch {
+    return svgToDataUrl(
+      coverSVG({
+        title: bookTitle,
+        subtitle,
+        authorName,
+        characters: characterNames,
+      }),
+    );
+  }
 }
 
+export async function generateCharacterSheet(
+  name: string,
+  description: string,
+): Promise<CharacterSheet> {
+  const baseSheetPrompt = (variant: string) =>
+    `${COLORING_RULES}. Single character reference, ${variant} of ${name}: ${description}. Centered, full body, plain white background. ${NEGATIVES}.`;
+  const expressionPrompt = (mood: string) =>
+    `${COLORING_RULES}. Portrait headshot of ${name}: ${description}, ${mood} expression, plain white background. ${NEGATIVES}.`;
+  const posePrompt = (action: string) =>
+    `${COLORING_RULES}. Full-body action pose of ${name}: ${description}, ${action}, plain white background. ${NEGATIVES}.`;
+
+  const seedBase = hashStr(name);
+  const u = (prompt: string, seedOffset: number) =>
+    pollinationsUrl(prompt, { width: 512, height: 640, seed: seedBase + seedOffset });
+
+  return {
+    frontView: u(baseSheetPrompt("front view"), 1),
+    sideView: u(baseSheetPrompt("side profile view"), 2),
+    backView: u(baseSheetPrompt("back view"), 3),
+    expressions: [
+      u(expressionPrompt("happy smiling"), 11),
+      u(expressionPrompt("surprised"), 12),
+      u(expressionPrompt("worried concerned"), 13),
+    ],
+    poses: [
+      u(posePrompt("waving hello"), 21),
+      u(posePrompt("running"), 22),
+      u(posePrompt("hugging a friend"), 23),
+    ],
+    outfitNotes: description,
+    consistencyRules: `Always render ${name} with the same outfit and proportions described: ${description}.`,
+  };
+}
+
+// Free LLM (Pollinations text endpoint)
+export async function generateStoryText(prompt: string): Promise<string> {
+  try {
+    const res = await fetch(`${POLLINATIONS_TEXT}${encodeURIComponent(prompt)}`);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    return await res.text();
+  } catch {
+    return "";
+  }
+}
+
+// Backwards-compatible aliases used by App.tsx and existing UI.
+export const mockGenerateLineArt = generateLineArt;
+export const mockGenerateCover = (
+  title: string,
+  subtitle: string | undefined,
+  authorName: string | undefined,
+  characterNames: string[],
+) => generateCover(title, subtitle, authorName, characterNames, "preschool-simple");
+
 export function mockCharacterSheet(name: string): CharacterSheet {
+  // Synchronous fallback for the seed data in `data/sample.ts`.
   const url = (suffix: string) => svgToDataUrl(characterSheetSVG(`${name}${suffix}`));
   return {
     frontView: url(""),
@@ -207,10 +346,6 @@ export function mockCharacterSheet(name: string): CharacterSheet {
     outfitNotes: "",
     consistencyRules: `Always render ${name} with the saved outfit, hairstyle, and proportions.`,
   };
-}
-
-function wait(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
 }
 
 // ─── Helpers used by section components ─────────────────────────────────────
